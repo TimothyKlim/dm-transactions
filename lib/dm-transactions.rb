@@ -100,13 +100,19 @@ module DataMapper
     # Before #begin is called, the transaction is not valid and can not be used.
     #
     # @api private
-    def begin
+    def begin kind_of_transaction = nil
       unless none?
         raise "Illegal state for begin: #{state}"
       end
 
       each_adapter(:connect_adapter, [:log_fatal_transaction_breakage])
-      each_adapter(:begin_adapter, [:rollback_and_close_adapter_if_begin, :close_adapter_if_none])
+
+      if kind_of_transaction
+        each_adapter(:"begin_adapter_#{kind_of_transaction.to_s}", [:rollback_and_close_adapter_if_begin, :close_adapter_if_none])
+      else
+        each_adapter(:begin_adapter, [:rollback_and_close_adapter_if_begin, :close_adapter_if_none])
+      end
+
       self.state = :begin
     end
 
@@ -120,14 +126,14 @@ module DataMapper
     #   around the block, and roll back if an exception is raised.
     #
     # @api private
-    def commit
+    def commit kind_of_transaction = nil
       if block_given?
         unless none?
           raise "Illegal state for commit with block: #{state}"
         end
 
         begin
-          self.begin
+          self.begin kind_of_transaction
           rval = within { |*block_args| yield(*block_args) }
         rescue Exception => exception
           if begin?
@@ -137,7 +143,7 @@ module DataMapper
         ensure
           unless exception
             if begin?
-              commit
+              commit(kind_of_transaction)
             end
             return rval
           end
@@ -269,7 +275,10 @@ module DataMapper
         raise "Unknown adapter #{adapter}"
       end
 
-      @adapters[adapter]
+      _ret = @adapters[adapter]
+      _ret = :begin if _ret == :begin_serializable
+
+      _ret
     end
 
     # @api private
@@ -325,6 +334,10 @@ module DataMapper
       do_adapter(adapter, :begin, :none)
     end
 
+    def begin_adapter_serializable(adapter)
+      do_adapter(adapter, :begin_serializable, :none)
+    end
+
     # @api private
     def commit_adapter(adapter)
       do_adapter(adapter, :commit, :begin)
@@ -368,9 +381,11 @@ module DataMapper
       #   of the class of this Resource added.
       #
       # @api public
-      def transaction
+      def transaction kind_of_transaction = nil
         transaction = Transaction.new(self)
-        transaction.commit { |block_args| yield(*block_args) }
+        transaction.commit(kind_of_transaction) do |block_args|
+          yield(*block_args)
+        end
       end
     end # module Model
 
@@ -383,8 +398,8 @@ module DataMapper
       #   of the class of this Resource added.
       #
       # @api public
-      def transaction
-        model.transaction { |*block_args| yield(*block_args) }
+      def transaction kind_of_transaction = nil
+        transaction.commit(kind_of_transaction) { |block_args| yield(*block_args) }
       end
     end # module Resource
 
