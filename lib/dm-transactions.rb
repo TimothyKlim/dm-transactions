@@ -399,7 +399,9 @@ module DataMapper
       #
       # @api public
       def transaction kind_of_transaction = nil
-        transaction.commit(kind_of_transaction) { |block_args| yield(*block_args) }
+        model.transaction(kind_of_transaction) do |*block_args|
+          yield(*block_args)
+        end
       end
     end # module Resource
 
