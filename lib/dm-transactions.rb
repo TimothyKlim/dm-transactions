@@ -275,10 +275,7 @@ module DataMapper
         raise "Unknown adapter #{adapter}"
       end
 
-      _ret = @adapters[adapter]
-      _ret = :begin if _ret == :begin_serializable
-
-      _ret
+      @adapters[adapter] == :begin_serializable ? :begin : @adapters[adapter]
     end
 
     # @api private
